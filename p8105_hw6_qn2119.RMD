@@ -1,0 +1,73 @@
+---
+title: "P8105 Homework 6"
+author: "Quinton Neville"
+date: "November 20, 2018"
+header-includes: 
+  \usepackage{graphicx}
+  \usepackage{float}
+  \usepackage{amsmath}
+output:
+   github_document
+---
+
+```{r setup, echo = FALSE, warning = FALSE, message = FALSE}
+#Load necessary packages
+library(tidyverse)
+library(readxl)
+library(readr)
+library(p8105.datasets)
+library(patchwork)
+library(ggridges)
+library(gridExtra)
+library(shiny)
+library(plotly)
+library(broom)
+library(scales)
+library(purrr)
+library(koRpus)
+
+#Controlling figure output in markdown
+knitr::opts_chunk$set(
+#  fig.height =   
+  fig.width = 6,
+#  fig.asp = .5,
+  out.width = "90%",
+#  out.height = 
+ fig.align = "center",
+  cache = FALSE
+)
+
+#Set Theme for ggplot2
+theme_set(theme_bw() + theme(plot.title = element_text(hjust = 0.5), legend.position = "bottom"))
+
+#Set Scientific notation output for knitr
+options(scipen = 999)
+
+```
+
+#Problem 1
+
+```{r problem_2, warning = FALSE, error = FALSE, message = FALSE}
+#Read in the wp homicide data
+wp.homicide.df <- read_csv("./data/wp_homicide_data.csv")
+
+#Snag Dimensions and summary
+dim.wp.df <- dim(wp.homicide.df)
+
+#Unique City/State locations
+unique.locations <- wp.homicide.df %>% distinct(., city, state) %>% nrow() #Problem, Tulsa, AL not a city
+                                                                           #Error, only one observation, lat/long matches OK
+
+#New city_state variable and data nest
+city.homicide.df <- wp.homicide.df %>%
+  mutate(
+    city_state = str_c(city, state, sep = ", "), #Create new city_state var with string concatenate
+    unsolved = ifelse(disposition == "Closed without arrest" | disposition == "Open/No arrest", TRUE, FALSE)
+  ) %>% select(city_state, everything()) %>%
+  filter(city_state != "Dallas, TX" & city_state != "Phoenix, AZ" &
+         city_state != "Kansas City, MO" & city_state != "Tulsa, AL") %>%
+  mutate(
+    victim_race = ifelse(victim_race == "White", "white", "non-white") %>%
+      as.factor() %>% fct_relevel(., "white", "non-white")
+  )
+```
