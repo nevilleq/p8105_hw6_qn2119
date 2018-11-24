@@ -55,19 +55,71 @@ wp.homicide.df <- read_csv("./data/wp_homicide_data.csv")
 dim.wp.df <- dim(wp.homicide.df)
 
 #Unique City/State locations
-unique.locations <- wp.homicide.df %>% distinct(., city, state) %>% nrow() #Problem, Tulsa, AL not a city
-                                                                           #Error, only one observation, lat/long matches OK
+unique.locations <- wp.homicide.df %>% distinct(., city, state) %>% nrow() 
 
-#New city_state variable and data nest
-city.homicide.df <- wp.homicide.df %>%
+#New city_state variable, filtering, and mutating
+wp.homicide.df <- wp.homicide.df %>%
   mutate(
-    city_state = str_c(city, state, sep = ", "), #Create new city_state var with string concatenate
+    city_state = str_c(city, state, sep = ", "), 
     unsolved = ifelse(disposition == "Closed without arrest" | disposition == "Open/No arrest", TRUE, FALSE)
   ) %>% select(city_state, everything()) %>%
   filter(city_state != "Dallas, TX" & city_state != "Phoenix, AZ" &
          city_state != "Kansas City, MO" & city_state != "Tulsa, AL") %>%
   mutate(
     victim_race = ifelse(victim_race == "White", "white", "non-white") %>%
-      as.factor() %>% fct_relevel(., "white", "non-white")
+      as.factor() %>% fct_relevel(., "white", "non-white"),
+    victim_age = parse_number(victim_age)
   )
+
+#GLM model Baltimore
+baltimore.glm <- wp.homicide.df %>% group_by(city_state) %>% nest() %>% filter(city_state == "Baltimore, MD") %>%
+  mutate(glm_model = map(data, ~glm(unsolved ~ victim_age + victim_sex + victim_race, data = .x, family = "binomial")),
+         conf_int = map(.x = glm_model, ~confint_tidy(.x, conf.level = 0.95)),
+         glm_model = map(glm_model, ~broom::tidy(.x))) %>%
+  unnest(., glm_model, conf_int) %>%
+  filter(term == "victim_racenon-white") %>%
+  select(city_state, estimate, conf.low, conf.high) %>%
+  gather(key = type, value = numeric, estimate:conf.high) %>%
+  mutate(numeric = exp(numeric))
+
+#GLM all Cities
+all.city.glm <- wp.homicide.df %>% group_by(city_state) %>% nest() %>%
+  mutate(glm_model = map(data, ~glm(unsolved ~ victim_age + victim_sex + victim_race, data = .x, family = "binomial")),
+         conf_int = map(.x = glm_model, ~confint_tidy(.x, conf.level = 0.95)),
+         glm_model = map(glm_model, ~broom::tidy(.x))) %>%
+  unnest(., glm_model, conf_int) %>%
+  filter(term == "victim_racenon-white") %>%
+  select(city_state, estimate, conf.low, conf.high) %>%
+  mutate(city_state = as.factor(city_state) %>% fct_reorder(., estimate, .desc = FALSE)) %>%
+  gather(key = type, value = numeric, estimate:conf.high) %>%
+  mutate(numeric = exp(numeric)) %>%
+  spread(type, numeric)
+
+```
+
+```{r fig.width = 6, fig.height = 10}
+all.city.glm %>%
+  ggplot(aes(x = city_state, y = estimate, fill = estimate)) +
+  geom_bar(stat = "identity", colour = "black", width = 1, alpha = 0.9) +
+  geom_errorbar(aes(x = city_state, ymin = conf.low, ymax = conf.high), colour = "red", size = .9, alpha = 0.5) +
+  coord_flip() +
+  viridis::scale_fill_viridis(
+    option = "magma",
+    name = "Multiplicative Odds Increase", 
+    discrete = FALSE
+  ) +
+  labs(
+    x = "City",
+    y = "Multiplicative Odds Increase",
+    title = "Odds of Homocide Unsolved for Non-White Victims"
+  ) +
+    theme(legend.position = "bottom",
+        axis.text.y = element_text(color = "black", 
+        size = 10,  hjust = 1) ) +
+  scale_y_continuous(breaks = seq(0, 24, 1), sec.axis = dup_axis())
+```
+
+```{r}
+
+
 ```
