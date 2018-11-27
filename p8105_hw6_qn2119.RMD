@@ -25,6 +25,7 @@ library(broom)
 library(scales)
 library(purrr)
 library(koRpus)
+library(modelr)
 
 #Controlling figure output in markdown
 knitr::opts_chunk$set(
@@ -66,11 +67,13 @@ wp.homicide.df <- wp.homicide.df %>%
   filter(city_state != "Dallas, TX" & city_state != "Phoenix, AZ" &
          city_state != "Kansas City, MO" & city_state != "Tulsa, AL") %>%
   mutate(
-    victim_race = ifelse(victim_race == "White", "white", "non-white") %>%
-      as.factor() %>% fct_relevel(., "white", "non-white"),
+    victim_race = ifelse(victim_race == "White", "white", "non-white"), 
+    victim_race = as.factor(victim_race) %>% fct_relevel(., "white", "non-white"),
     victim_age = parse_number(victim_age)
   )
+```
 
+```{r warning = FALSE, error = FALSE}
 #GLM model Baltimore
 baltimore.glm <- wp.homicide.df %>% group_by(city_state) %>% nest() %>% filter(city_state == "Baltimore, MD") %>%
   mutate(glm_model = map(data, ~glm(unsolved ~ victim_age + victim_sex + victim_race, data = .x, family = "binomial")),
@@ -119,7 +122,91 @@ all.city.glm %>%
   scale_y_continuous(breaks = seq(0, 24, 1), sec.axis = dup_axis())
 ```
 
+
+
+#Problem 2
+
+```{r message = FALSE}
+child.bw.df <- read_csv("./data/birthweight.csv") %>%
+  janitor::clean_names() %>%
+  mutate(
+    babysex = ifelse(babysex == 1, "Male", "Female") %>% as.factor(),
+    frace = as.factor(frace),
+    mrace = as.factor(mrace),
+    malform = ifelse(malform == 1, TRUE, FALSE)
+  ) %>%
+  select(bwt, everything())
+
+#Check NA
+missing_vec <- apply(child.bw.df, 2, function(x) {sum(is.na(x))})
+```
+
+####Modeling
+```{r results = 'hide'}
+#Subset LM Selection (AIC)
+mult.fit <- lm(bwt ~ ., data = child.bw.df)
+back.sub.formula <- step(mult.fit, direction = 'backward')$terms
+back.sub.mod <- lm(back.sub.formula, data = child.bw.df) 
+```
+
 ```{r}
+back.sub.mod %>% broom::tidy() %>%
+  knitr::kable()
+```
+
+```{r}
+child.bw.df %>%
+  add_residuals(back.sub.mod) %>%
+  add_predictions(back.sub.mod) %>%
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point() +
+  labs(
+    x = "Fitted",
+    y = "Residual",
+    title = "Residuals vs. Fitted"
+  )
+```
 
 
+####Comparing Models
+
+Given our selected model above, we will fit two alternative linear models for birthweight 
+- Baby length at birth and gestational age as predictors
+- Baby head circumference, length at birth, and sex; using all possible interactions.
+
+We will compare our model with these two alternatives using 10-fold Cross validation with MSE as the predictive quantity to minimize. 
+```{r}
+mod.2a <- child.bw.df %>% lm(bwt ~ blength + gaweeks, data = .)
+mod.2a %>% broom::tidy() %>% knitr::kable()
+
+mod.2b <- child.bw.df %>% lm(bwt ~ bhead * babysex + bhead * blength + blength * babysex + bhead * babysex * blength, data = .)
+mod.2b %>% broom::tidy() %>% knitr::kable()
+```
+
+
+```{r}
+cv.df <- crossv_mc(child.bw.df, 100) %>%
+  mutate(train = map(train, as.tibble),
+         test = map(test, as.tibble)) %>%
+  mutate(back_sub_lm = map(train, ~lm(back.sub.formula, data = .x)),
+         lm_2a = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+         lm_2b = map(train, 
+                     ~lm(bwt ~ bhead * babysex + bhead * blength + blength * babysex + bhead * babysex * blength, data = .x))) %>%
+  mutate(back_sub_rmse = map2_dbl(back_sub_lm, test, ~rmse(model = .x, data = .y)),
+         lm_2a_rmse = map2_dbl(lm_2a, test, ~rmse(model = .x, data = .y)),
+         lm_2b_rmse = map2_dbl(lm_2b, test, ~rmse(model = .x, data = .y)))
+  
+cv.df %>% 
+  select(ends_with("rmse")) %>% 
+  gather(key = model, value = rmse) %>% 
+  mutate(model = str_replace(model, "_rmse", ""),
+         model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + 
+  geom_violin() + 
+  geom_boxplot(width = 0.25) +
+  labs(
+    x = "Root Mean Sqaure Error",
+    y = "Model",
+    title = "RMSE by Model"
+  )
 ```
