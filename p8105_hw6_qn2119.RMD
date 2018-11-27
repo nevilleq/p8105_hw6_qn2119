@@ -132,15 +132,16 @@ all.city.glm %>%
     y = "Odds Ratio",
     title = "Odds of Unsolved Homocide for Non-White Victims"
   ) +
-    theme(legend.position = "bottom",
+  theme(legend.position = "bottom",
         axis.text.y = element_text(color = "black", 
-        size = 10,  hjust = 1) ) +
+        size = 10,  hjust = 1)) +
   scale_y_continuous(breaks = seq(0, 24, 1), sec.axis = dup_axis())
 ```
 
-With respect to the visualization above, it is important to note that while all 95% CI's do not contain 1, almost every estimated coefficient is above 1. Remark on how many have CI lower bounds above 1, and  the max case. Conclude with evidence to suggest race is a meaningful factor in homocide resoution in many US cities. 
+With respect to the visualization above, it is important to note that while all 95% CI's do not contain 1, almost every estimated coefficient is above 1. Additionally, `r all.city.glm %>% filter(conf.low > 1) %>% nrow()` cities have lower 95% OR bounds above one, indicating that in over 50% of cities, we would expect to see a significant increase in the odds of a homicide being unsolved if the vitcim was non-white, adjusting for age and sex. We would conclude, based on these results and the visualization above, that there exists racial disparity in closing homicide cases in many major cities in the United States; adjusting for age and sex of the victim.  
 
 #Problem 2
+These data concern a child's birthweight, along with a variety of other pre-existing and post-partum baby characteristics. Here we will clean and tidy the data as appropriate, propose an inital linear model, compare it with two alternate models using k-fold cross-validation, and make a conclusion based on the results.
 
 ```{r message = FALSE}
 child.bw.df <- read_csv("./data/birthweight.csv") %>%
@@ -158,6 +159,8 @@ missing_vec <- apply(child.bw.df, 2, function(x) {sum(is.na(x))})
 ```
 
 ####Modeling
+Here, we propose a linear model for simplicity. We will utilize backwards subset selection based on AIC to iteratively eliminate the covariate which maximizes AIC, until a minimum AIC is achieved (i.e. if after removing a covariate, removing any other covariates increases the AIC, that covariate subset will be selected as optimal). 
+
 ```{r results = 'hide'}
 #Subset LM Selection (AIC)
 mult.fit <- lm(bwt ~ ., data = child.bw.df)
@@ -165,17 +168,27 @@ back.sub.formula <- step(mult.fit, direction = 'backward')$terms
 back.sub.mod <- lm(back.sub.formula, data = child.bw.df) 
 ```
 
+After utilizing backwards subset selection based on AIC criterion, we propose the model 
+
+$$Birthweight_i \sim HeadCircum._i + Length_i + Mother's Weight_i + Family Income_i + Gest. Weeks_i + Mother Height_i + Mother Race_i + Parity_i + Pre.Preg. Wieght_i + Smoke_i + \varepsilon_i$$
+
+Intuitively, many of these covariates would be expected to be linearly associated with a babie's birthweight. Interestingly, using the backwards subset selection method with AIC criterion did not select any covariates pertaining to the father, only the mother of the child. Below, we visualized the results of the regression output:
+
 ```{r}
 back.sub.mod %>% broom::tidy() %>%
   knitr::kable()
 ```
+
+Additionally, by selecting based on AIC criterion, it is interesting that every covariate other than financial income and mother being of asian descent is significant. However, even those covariates which are not significant, they are very nearly so and should not be discounted as unimportant simply based on p-value.
+
+Next, we visualized the a residuals vs. fitted values plot to assess the linear model assumption of homoscedasticity as well as where our predictive model may be biased/highly variable. 
 
 ```{r}
 child.bw.df %>%
   add_residuals(back.sub.mod) %>%
   add_predictions(back.sub.mod) %>%
   ggplot(aes(x = pred, y = resid)) +
-  geom_point() +
+  geom_point(alpha = 0.8) +
   labs(
     x = "Fitted",
     y = "Residual",
@@ -183,6 +196,7 @@ child.bw.df %>%
   )
 ```
 
+Observing the Residuals vs. Fitted values plot above, we noted that for those predicted birthweights above 2000 kg, the residuals are approximately equally distributed around zero with no particular trend and few outliers. However, for those fitted values less than 2000 kg, we see a non-linear trend in the residuals, implying unequal variance amongst covariates in the model. While this implies that assumptions are not met for inference, we may still be able to analyze this as a predictive model. Again we note that as a predictive model, it missess highly when predicting low birthweights but does a fairly good job for birthweights between 2000-4000 kg.
 
 ####Comparing Models
 
@@ -190,7 +204,8 @@ Given our selected model above, we will fit two alternative linear models for bi
 - Baby length at birth and gestational age as predictors
 - Baby head circumference, length at birth, and sex; using all possible interactions.
 
-We will compare our model with these two alternatives using 10-fold Cross validation with MSE as the predictive quantity to minimize. 
+We will compare our model with these two alternatives using 10-fold Cross validation with RMSE as the predictive quantity to minimize. Below we declare the models and visualize the summary output.
+
 ```{r}
 mod.2a <- child.bw.df %>% lm(bwt ~ blength + gaweeks, data = .)
 mod.2a %>% broom::tidy() %>% knitr::kable()
@@ -199,6 +214,7 @@ mod.2b <- child.bw.df %>% lm(bwt ~ bhead * babysex + bhead * blength + blength *
 mod.2b %>% broom::tidy() %>% knitr::kable()
 ```
 
+Next we utilze 10-Fold validation, with 100 iterations, to robustly assess any and all differences in RMSE that may exist between the data with varying training and test data sets. 
 
 ```{r}
 cv.df <- crossv_mc(child.bw.df, 100) %>%
@@ -211,14 +227,18 @@ cv.df <- crossv_mc(child.bw.df, 100) %>%
   mutate(back_sub_rmse = map2_dbl(back_sub_lm, test, ~rmse(model = .x, data = .y)),
          lm_2a_rmse = map2_dbl(lm_2a, test, ~rmse(model = .x, data = .y)),
          lm_2b_rmse = map2_dbl(lm_2b, test, ~rmse(model = .x, data = .y)))
-  
+```
+
+Lastly, we visualize this output with a mixture violin/boxplot of RMSE by model below. 
+
+```{r}
 cv.df %>% 
   select(ends_with("rmse")) %>% 
   gather(key = model, value = rmse) %>% 
   mutate(model = str_replace(model, "_rmse", ""),
          model = fct_inorder(model)) %>% 
   ggplot(aes(x = model, y = rmse)) + 
-  geom_violin() + 
+  geom_violin(trim = FALSE) + 
   geom_boxplot(width = 0.25) +
   labs(
     x = "Root Mean Sqaure Error",
@@ -226,3 +246,5 @@ cv.df %>%
     title = "RMSE by Model"
   )
 ```
+
+Here, we see that the model built with backward subset AIC criterion has the minimal RMSE of all three models, although the second linear model with interaction terms has only slightly higher RMSE with fewer terms. Lastly, the simplest linear model has the highest RMSE, which is not necessarily surprising. Overall, this leads us to conclude that the model built with backwards subset selection, is the best predictive model for minimizing RMSE, robustly confirmed with 100 iterative 10-fold cross validation. However, if inference were to be the goal of this model, we would suggest model assumptions and further analysis be conducted on the simpler linear models. Intuitively, we would expect the simplest linear model to have the strongest linear assumptions met, making it the best candidate of these three for inference. 
