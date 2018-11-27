@@ -48,6 +48,9 @@ options(scipen = 999)
 
 #Problem 1
 
+This problem concerns previously investigated data concerning the rate of homocide resolution in police departements in major cities around the country. Here, we will briefly clean and tidy these data and fit GLM logit models by city on unsolved with victim age, sex, and race as predictors, focusing on the coefficient for race, obtain 95% CI's for these coefficient estimates, and visualize the results. 
+
+####Read and Clean Washington Post Data
 ```{r problem_2, warning = FALSE, error = FALSE, message = FALSE}
 #Read in the wp homicide data
 wp.homicide.df <- read_csv("./data/wp_homicide_data.csv")
@@ -73,6 +76,8 @@ wp.homicide.df <- wp.homicide.df %>%
   )
 ```
 
+####Fit a Logit GLM for Baltimore, MD
+Here, we fit a GLM from the binomial family, with the binary solved or unsolved variable as the response and victim age, sex, and race as predictors. We then obtained a 95% CI for the estimated coefficient for race, describing the change in log odds of the case being unsolved. Lastly, we produce a table of the exponentiated values, back transforming out of log-space to interpret the coefficients in terms of odds. 
 ```{r warning = FALSE, error = FALSE}
 #GLM model Baltimore
 baltimore.glm <- wp.homicide.df %>% group_by(city_state) %>% nest() %>% filter(city_state == "Baltimore, MD") %>%
@@ -82,9 +87,19 @@ baltimore.glm <- wp.homicide.df %>% group_by(city_state) %>% nest() %>% filter(c
   unnest(., glm_model, conf_int) %>%
   filter(term == "victim_racenon-white") %>%
   select(city_state, estimate, conf.low, conf.high) %>%
-  gather(key = type, value = numeric, estimate:conf.high) %>%
-  mutate(numeric = exp(numeric))
+  gather(key = type, value = value, estimate:conf.high) %>%
+  mutate(value = exp(value))
 
+baltimore.glm %>% knitr::kable()
+```
+
+The table obtained above describes that in Baltimore, MD, we would expect to see a 127% increase in the odds of a homocide being unsolved if the victim was not-white, after adjusting for victim age and sex. The corresponding 95% CI implies that we are 95% confident that the true odds ratio for non-white victim homocide resolution in Baltimore, MD lies between (1.61, 3.2). As this does not include 1, we have good evidence to suggest there is a significant increase in the odds of a homocide case being unsolved when the victim is non-white in Baltimore, MD, after adjusting for victim age and sex.
+
+
+####Repeat GLM Modeling for All Cities
+
+We repeat the process outlined above for each city in these data. Again we fit the glm, obtain a 95% confidence interval for the coefficient estimate, exponetial transform to obtain the OR, and manipulate the resulting data frame for visualization. 
+```{r warning = FALSE, error = FALSE}
 #GLM all Cities
 all.city.glm <- wp.homicide.df %>% group_by(city_state) %>% nest() %>%
   mutate(glm_model = map(data, ~glm(unsolved ~ victim_age + victim_sex + victim_race, data = .x, family = "binomial")),
@@ -94,11 +109,12 @@ all.city.glm <- wp.homicide.df %>% group_by(city_state) %>% nest() %>%
   filter(term == "victim_racenon-white") %>%
   select(city_state, estimate, conf.low, conf.high) %>%
   mutate(city_state = as.factor(city_state) %>% fct_reorder(., estimate, .desc = FALSE)) %>%
-  gather(key = type, value = numeric, estimate:conf.high) %>%
-  mutate(numeric = exp(numeric)) %>%
-  spread(type, numeric)
-
+  gather(key = type, value = value, estimate:conf.high) %>%
+  mutate(value = exp(value)) %>%
+  spread(type, value)
 ```
+
+Here we visualize the resulting OR for a homocide being unsolved for non-white victims in each city, after adjusting for victim age and sex. Cities are found on the y-axis, OR are on the x-axis, and the red error bars describe the 95% confidence interval for the true OR. 
 
 ```{r fig.width = 6, fig.height = 10}
 all.city.glm %>%
@@ -108,13 +124,13 @@ all.city.glm %>%
   coord_flip() +
   viridis::scale_fill_viridis(
     option = "magma",
-    name = "Multiplicative Odds Increase", 
+    name = "Odds Ratio", 
     discrete = FALSE
   ) +
   labs(
     x = "City",
-    y = "Multiplicative Odds Increase",
-    title = "Odds of Homocide Unsolved for Non-White Victims"
+    y = "Odds Ratio",
+    title = "Odds of Unsolved Homocide for Non-White Victims"
   ) +
     theme(legend.position = "bottom",
         axis.text.y = element_text(color = "black", 
@@ -122,7 +138,7 @@ all.city.glm %>%
   scale_y_continuous(breaks = seq(0, 24, 1), sec.axis = dup_axis())
 ```
 
-
+With respect to the visualization above, it is important to note that while all 95% CI's do not contain 1, almost every estimated coefficient is above 1. Remark on how many have CI lower bounds above 1, and  the max case. Conclude with evidence to suggest race is a meaningful factor in homocide resoution in many US cities. 
 
 #Problem 2
 
