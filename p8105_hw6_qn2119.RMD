@@ -65,8 +65,8 @@ unique.locations <- wp.homicide.df %>% distinct(., city, state) %>% nrow()
 wp.homicide.df <- wp.homicide.df %>%
   mutate(
     city_state = str_c(city, state, sep = ", "), 
-    unsolved = ifelse(disposition == "Closed without arrest" | disposition == "Open/No arrest", TRUE, FALSE)
-  ) %>% select(city_state, everything()) %>%
+    unsolved = ifelse(disposition == "Closed without arrest" | disposition == "Open/No arrest", TRUE, FALSE)) %>% 
+  select(city_state, everything()) %>%
   filter(city_state != "Dallas, TX" & city_state != "Phoenix, AZ" &
          city_state != "Kansas City, MO" & city_state != "Tulsa, AL") %>%
   mutate(
@@ -80,7 +80,10 @@ wp.homicide.df <- wp.homicide.df %>%
 Here, we fit a GLM from the binomial family, with the binary solved or unsolved variable as the response and victim age, sex, and race as predictors. We then obtained a 95% CI for the estimated coefficient for race, describing the change in log odds of the case being unsolved. Lastly, we produce a table of the exponentiated values, back transforming out of log-space to interpret the coefficients in terms of odds. 
 ```{r warning = FALSE, error = FALSE}
 #GLM model Baltimore
-baltimore.glm <- wp.homicide.df %>% group_by(city_state) %>% nest() %>% filter(city_state == "Baltimore, MD") %>%
+baltimore.glm <- wp.homicide.df %>% 
+  group_by(city_state) %>% 
+  nest() %>% 
+  filter(city_state == "Baltimore, MD") %>%
   mutate(glm_model = map(data, ~glm(unsolved ~ victim_age + victim_sex + victim_race, data = .x, family = "binomial")),
          conf_int = map(.x = glm_model, ~confint_tidy(.x, conf.level = 0.95)),
          glm_model = map(glm_model, ~broom::tidy(.x))) %>%
@@ -101,14 +104,17 @@ The table obtained above describes that in Baltimore, MD, we would expect to see
 We repeat the process outlined above for each city in these data. Again we fit the glm, obtain a 95% confidence interval for the coefficient estimate, exponetial transform to obtain the OR, and manipulate the resulting data frame for visualization. 
 ```{r warning = FALSE, error = FALSE}
 #GLM all Cities
-all.city.glm <- wp.homicide.df %>% group_by(city_state) %>% nest() %>%
+all.city.glm <- wp.homicide.df %>% 
+  group_by(city_state) %>% 
+  nest() %>%
   mutate(glm_model = map(data, ~glm(unsolved ~ victim_age + victim_sex + victim_race, data = .x, family = "binomial")),
          conf_int = map(.x = glm_model, ~confint_tidy(.x, conf.level = 0.95)),
          glm_model = map(glm_model, ~broom::tidy(.x))) %>%
   unnest(., glm_model, conf_int) %>%
   filter(term == "victim_racenon-white") %>%
   select(city_state, estimate, conf.low, conf.high) %>%
-  mutate(city_state = as.factor(city_state) %>% fct_reorder(., estimate, .desc = FALSE)) %>%
+  mutate(city_state = as.factor(city_state),
+         city_state = fct_reorder(city_state, estimate, .desc = FALSE)) %>%
   gather(key = type, value = value, estimate:conf.high) %>%
   mutate(value = exp(value)) %>%
   spread(type, value)
@@ -125,13 +131,11 @@ all.city.glm %>%
   viridis::scale_fill_viridis(
     option = "magma",
     name = "Odds Ratio", 
-    discrete = FALSE
-  ) +
+    discrete = FALSE) +
   labs(
     x = "City",
     y = "Odds Ratio",
-    title = "Odds of Unsolved Homocide for Non-White Victims"
-  ) +
+    title = "Odds of Unsolved Homocide for Non-White Victims") +
   theme(legend.position = "bottom",
         axis.text.y = element_text(color = "black", 
         size = 10,  hjust = 1)) +
@@ -224,8 +228,7 @@ cv.df <- crossv_mc(child.bw.df, 100) %>%
          test = map(test, as.tibble)) %>%
   mutate(back_sub_lm = map(train, ~lm(back.sub.formula, data = .x)),
          lm_2a = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
-         lm_2b = map(train, 
-                     ~lm(bwt ~ bhead * babysex + bhead * blength + blength * babysex + bhead * babysex * blength, data = .x))) %>%
+         lm_2b = map(train, ~lm(bwt ~ bhead * babysex + bhead * blength + blength * babysex + bhead * babysex * blength, data = .x))) %>%
   mutate(back_sub_rmse = map2_dbl(back_sub_lm, test, ~rmse(model = .x, data = .y)),
          lm_2a_rmse = map2_dbl(lm_2a, test, ~rmse(model = .x, data = .y)),
          lm_2b_rmse = map2_dbl(lm_2b, test, ~rmse(model = .x, data = .y)))
