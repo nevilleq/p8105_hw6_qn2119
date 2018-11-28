@@ -216,7 +216,7 @@ mod.2b %>% broom::tidy() %>% knitr::kable()
 
 Next we utilze 10-Fold validation, with 100 iterations, to robustly assess any and all differences in RMSE that may exist between the data with varying training and test data sets. 
 
-```{r}
+```{r warning = FALSE}
 cv.df <- crossv_mc(child.bw.df, 100) %>%
   mutate(train = map(train, as.tibble),
          test = map(test, as.tibble)) %>%
@@ -241,10 +241,10 @@ cv.df %>%
   geom_violin(trim = FALSE) + 
   geom_boxplot(width = 0.25) +
   labs(
-    x = "Root Mean Sqaure Error",
-    y = "Model",
+    y = "Root Mean Sqaure Error",
+    x = "Model",
     title = "RMSE by Model"
-  )
+  ) 
 ```
 
 Here, we see that the model built with backward subset AIC criterion has the minimal RMSE of all three models, although the second linear model with interaction terms has only slightly higher RMSE with fewer terms. Lastly, the simplest linear model has the highest RMSE, which is not necessarily surprising. Overall, this leads us to conclude that the model built with backwards subset selection, is the best predictive model for minimizing RMSE, robustly confirmed with 100 iterative 10-fold cross validation. However, if inference were to be the goal of this model, we would suggest model assumptions and further analysis be conducted on the simpler linear models. Intuitively, we would expect the simplest linear model to have the strongest linear assumptions met, making it the best candidate of these three for inference. 
