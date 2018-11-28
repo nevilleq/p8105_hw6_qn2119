@@ -200,8 +200,10 @@ Observing the Residuals vs. Fitted values plot above, we noted that for those pr
 
 ####Comparing Models
 
-Given our selected model above, we will fit two alternative linear models for birthweight 
+Given our selected model above, we will fit two alternative linear models for birthweight  
+
 - Baby length at birth and gestational age as predictors
+
 - Baby head circumference, length at birth, and sex; using all possible interactions.
 
 We will compare our model with these two alternatives using 10-fold Cross validation with RMSE as the predictive quantity to minimize. Below we declare the models and visualize the summary output.
