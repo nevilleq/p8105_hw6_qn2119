@@ -1,5 +1,5 @@
 ---
-title: "P8105 Homework 6"
+title: "P8105 Homework 6 "
 author: "Quinton Neville"
 date: "November 20, 2018"
 header-includes: 
